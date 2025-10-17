@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { Phone, UserCheck, Truck, CheckCircle, Navigation, Clock, ArrowLeft } from 'lucide-react';
 import { SOSRequest, User } from '../../types';
+import { openGoogleMapsDirections } from '../../utils/maps';
 import { rescueUsers } from '../../data/mockData';
 
 interface SOSStatusTrackerProps {
@@ -25,7 +26,7 @@ const SOSStatusTracker: React.FC<SOSStatusTrackerProps> = ({ sosRequest, onExit 
   const rescueTeamLocation: [number, number] = rescueTeam ? [sosRequest.location[0] + 0.05, sosRequest.location[1] + 0.05] : sosRequest.location;
 
   const handleNavigate = () => {
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${sosRequest.location[0]},${sosRequest.location[1]}`, '_blank');
+    openGoogleMapsDirections(sosRequest.location, { travelMode: 'driving' });
   };
 
   return (

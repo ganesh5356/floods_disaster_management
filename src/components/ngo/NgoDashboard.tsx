@@ -6,6 +6,7 @@ import NgoAdminDashboard from './NgoAdminDashboard';
 import NgoVolunteerView from './NgoVolunteerView';
 import { Assignment, VolunteerReport, User } from '../../types';
 import { assignments as initialAssignments, volunteerReports as initialVolunteerReports } from '../../data/mockData';
+import useEnsureLocation from '../../hooks/useEnsureLocation';
 
 interface NgoDashboardProps {
   citizens: User[];
@@ -14,6 +15,7 @@ interface NgoDashboardProps {
 
 const NgoDashboard: React.FC<NgoDashboardProps> = ({ citizens, setCitizens }) => {
   const { user, logout } = useAuth();
+  useEnsureLocation();
   
   const [assignments, setAssignments] = useState<Assignment[]>(initialAssignments);
   const [volunteerReports, setVolunteerReports] = useState<VolunteerReport[]>(initialVolunteerReports);

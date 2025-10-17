@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   AlertTriangle, Phone, Camera, Mic, Bell, LogOut,
   LayoutDashboard, Newspaper, Settings, Map,
-  User as UserIcon, Languages, Save, Download, Menu, X, Volume2, ShieldCheck, Home, ArrowLeft, CloudRain
+  User as UserIcon, Languages, Save, Download, Menu, X, Volume2, ShieldCheck, Home, CloudRain
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import FloodMap from '../map/FloodMap';
@@ -16,7 +16,7 @@ import useEnsureLocation from '../../hooks/useEnsureLocation';
 import DashboardView from './user/DashboardView';
 import qrGenerator from 'qrcode-generator';
 import SOSStatusTracker from './SOSStatusTracker';
-import { safeShelters as allSafeShelters } from '../../data/mockData';
+// removed unused imports
 
 const dbPromise = openDB('sos-db', 1, {
   upgrade(db) {
@@ -180,24 +180,53 @@ const SettingsView: React.FC<{ user: User | null }> = ({ user }) => {
     const { t, i18n } = useTranslation();
     const { logout } = useAuth();
     const [qrUrl, setQrUrl] = useState(user?.qrCodeDataUrl);
+    const [pendingLang, setPendingLang] = useState<string>(i18n.language);
     
     useEffect(() => {
-        if (!user?.qrCodeDataUrl && user) {
-            const qrData = JSON.stringify({
-                id: user.id, name: user.name, mobile: user.mobile,
-                location: `${user.area}, ${user.district}, ${user.state}`,
-                aidStatus: user.aidStatus,
-            });
-            const qr = qrGenerator(0, 'M');
-            qr.addData(qrData);
-            qr.make();
-            const dataUrl = qr.createDataURL(4, 4);
-            setQrUrl(dataUrl);
+        if (!user) return;
+        const hasDataUrl = !!user.qrCodeDataUrl && typeof user.qrCodeDataUrl === 'string' && user.qrCodeDataUrl.startsWith('data:image');
+        if (hasDataUrl) {
+            setQrUrl(user.qrCodeDataUrl as string);
+            return;
         }
+
+        // Build comprehensive QR payload with key user fields
+        const payload = {
+            id: user.id,
+            name: user.name,
+            mobile: user.mobile,
+            email: user.email,
+            role: user.role,
+            state: user.state,
+            district: user.district,
+            area: user.area,
+            aidStatus: user.aidStatus,
+            language: user.language,
+            permissions: user.permissions,
+            location: Array.isArray(user.location) ? user.location : undefined,
+            timestamp: new Date().toISOString(),
+        };
+
+        const qr = qrGenerator(0, 'M');
+        qr.addData(JSON.stringify(payload));
+        qr.make();
+        const dataUrl = qr.createDataURL(4, 4);
+        setQrUrl(dataUrl);
     }, [user]);
 
     const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        i18n.changeLanguage(e.target.value);
+        setPendingLang(e.target.value);
+    };
+
+    const handleSave = async () => {
+        if (pendingLang && pendingLang !== i18n.language) {
+            await i18n.changeLanguage(pendingLang);
+            try {
+                localStorage.setItem('i18nextLng', pendingLang);
+            } catch {}
+        }
+        // Here is where you'd persist other profile fields in a real app
+        alert(t('settings_saved') || 'Settings saved');
     };
 
     const handleDownloadQR = () => {
@@ -253,7 +282,7 @@ const SettingsView: React.FC<{ user: User | null }> = ({ user }) => {
                             <Languages className="w-6 h-6 text-gray-500" />
                             <div className="flex-1">
                                 <label className="block text-sm font-medium text-gray-700">{t('preferred_language')}</label>
-                                <select defaultValue={i18n.language} onChange={handleLanguageChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                <select value={pendingLang} onChange={handleLanguageChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                                     <option value="en">English</option>
                                     <option value="hi">हिंदी (Hindi)</option>
                                     <option value="ta">தமிழ் (Tamil)</option>
@@ -276,7 +305,7 @@ const SettingsView: React.FC<{ user: User | null }> = ({ user }) => {
                             </div>
                         </div>
                         <div className="flex justify-end pt-4">
-                            <button className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center">
+                            <button onClick={handleSave} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center">
                                 <Save className="w-4 h-4 mr-2" />
                                 {t('save_changes')}
                             </button>
@@ -372,7 +401,10 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ floodZones, sosRequests, 
             try {
                 const sw = await navigator.serviceWorker.ready;
                 await saveSOSToDB(sosData);
-                await sw.sync.register('sync-sos-requests');
+                // Background sync may not be available in all browsers
+                if ('sync' in sw) {
+                    await (sw as any).sync.register('sync-sos-requests');
+                }
                 alert('You are offline. SOS request saved and will be sent automatically when you are back online.');
             } catch (error) {
                 console.error('Background sync registration failed:', error);

@@ -196,12 +196,42 @@ const Login: React.FC<LoginProps> = ({ setGeneralUsers, adminUsers, rescueUsers,
     setError(null);
     setTimeout(() => {
       setIsLoading(false);
-      const user = generalUsers.find(u => (u.email === data.username || u.mobile === data.username) && u.password === data.password);
+      const usernameRaw = (data.username || '').toString().trim();
+      const passwordRaw = (data.password || '').toString();
+      const usernameLower = usernameRaw.toLowerCase();
+      const usernameDigits = usernameRaw.replace(/\D/g, '');
+
+      const user = generalUsers.find(u => (
+        (u.email && u.email.toLowerCase() === usernameLower) ||
+        (u.mobile && u.mobile.replace(/\D/g, '') === usernameDigits)
+      ) && u.password === passwordRaw);
+
       if (user) {
         login(user);
-      } else {
-          setError('Invalid username or password.');
+        return;
       }
+
+      // Demo fallback: allow mobile 9999999000 with password123 to log in as a default citizen
+      if (usernameDigits === '9999999000' && passwordRaw === 'password123') {
+        const demoUser: User = {
+          id: `demo_${Date.now()}`,
+          role: 'user',
+          name: 'Demo User',
+          email: 'demo@example.com',
+          mobile: '9999999000',
+          password: 'password123',
+          state: 'West Bengal',
+          district: 'Kolkata',
+          area: 'Salt Lake',
+          language: 'en',
+          permissions: { location: true, sms: true, notifications: true },
+          aidStatus: 'Not Received',
+        } as User;
+        login(demoUser);
+        return;
+      }
+
+      setError('Invalid username or password.');
     }, 1000);
   };
 
@@ -262,9 +292,19 @@ const Login: React.FC<LoginProps> = ({ setGeneralUsers, adminUsers, rescueUsers,
   const handlePermissionSubmit = () => {
     const userWithPermissions = { ...finalizingUser, permissions };
     const qrData = JSON.stringify({
-        id: userWithPermissions.id, name: userWithPermissions.name, mobile: userWithPermissions.mobile,
-        location: `${userWithPermissions.area}, ${userWithPermissions.district}, ${userWithPermissions.state}`,
+        id: userWithPermissions.id,
+        name: userWithPermissions.name,
+        mobile: userWithPermissions.mobile,
+        email: userWithPermissions.email,
+        role: userWithPermissions.role,
+        state: userWithPermissions.state,
+        district: userWithPermissions.district,
+        area: userWithPermissions.area,
         aidStatus: userWithPermissions.aidStatus,
+        language: (userWithPermissions as any).language,
+        permissions: (userWithPermissions as any).permissions,
+        location: (userWithPermissions as any).location,
+        timestamp: new Date().toISOString(),
     });
     const qr = qrGenerator(0, 'M');
     qr.addData(qrData);
@@ -444,6 +484,29 @@ const Login: React.FC<LoginProps> = ({ setGeneralUsers, adminUsers, rescueUsers,
         <button onClick={() => { setAuthMode('login'); setError(null); }} className={`flex-1 py-2 font-medium ${authMode === 'login' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>{t('log_in')}</button>
         <button onClick={() => { setAuthMode('signup'); setError(null); }} className={`flex-1 py-2 font-medium ${authMode === 'signup' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>{t('create_new_account')}</button>
       </div>
+      <div className="mb-4">
+        <button
+          onClick={() => {
+            if (!navigator || !navigator.geolocation) {
+              alert('Geolocation not supported.');
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                try {
+                  localStorage.setItem('preLoginLocation', JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }));
+                  alert('Location saved for this session. You can proceed to log in.');
+                } catch {}
+              },
+              () => alert('Permission denied. Please allow location access.'),
+              { enableHighAccuracy: true, maximumAge: 30000, timeout: 8000 }
+            );
+          }}
+          className="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700"
+        >
+          Access Current Location (Recommended)
+        </button>
+      </div>
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
       <AnimatePresence mode="wait">
         {authMode === 'login' && renderUserLogin()}
@@ -456,7 +519,10 @@ const Login: React.FC<LoginProps> = ({ setGeneralUsers, adminUsers, rescueUsers,
   const renderUserLogin = () => (
     <motion.div key="userLogin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('citizen_login_title')}</h2>
-      <p className="text-xs text-center text-gray-500 mb-4">{t('citizen_login_demo')}</p>
+      <p className="text-xs text-center text-gray-500 mb-2">{t('citizen_login_demo')}</p>
+      <div className="text-xs text-center text-gray-700 mb-4 bg-gray-50 border border-gray-200 rounded-md p-2">
+        <span className="font-semibold">Demo Mobile:</span> 9999999000 &nbsp; | &nbsp; <span className="font-semibold">Password:</span> password123
+      </div>
       <form onSubmit={handleUserLoginSubmit(onUserLogin)} className="space-y-4">
         <input {...registerUserLogin('username')} placeholder={t('mobile_or_email_placeholder')} className="w-full px-4 py-3 border rounded-lg" />
         {userLoginErrors.username && <p className="text-red-500 text-sm">{userLoginErrors.username?.message}</p>}

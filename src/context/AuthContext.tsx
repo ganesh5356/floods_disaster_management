@@ -22,15 +22,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (userData: User) => {
     // Save immediately
-    setUser(userData);
-    localStorage.setItem('floodUser', JSON.stringify(userData));
+    let baseUser = userData;
+
+    // If location was captured pre-login, attach it immediately
+    try {
+      const pre = localStorage.getItem('preLoginLocation');
+      if (pre) {
+        const { lat, lng } = JSON.parse(pre);
+        baseUser = {
+          ...baseUser,
+          permissions: { ...baseUser.permissions, location: true },
+          location: [lat, lng],
+        } as User;
+        localStorage.removeItem('preLoginLocation');
+      }
+    } catch {}
+
+    setUser(baseUser);
+    localStorage.setItem('floodUser', JSON.stringify(baseUser));
 
     // Attempt to get location permission and coordinates
     if (navigator && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const updated: User = {
-            ...userData,
+            ...baseUser,
             permissions: { ...userData.permissions, location: true },
             location: [position.coords.latitude, position.coords.longitude],
           };
@@ -39,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         () => {
           const updated: User = {
-            ...userData,
+            ...baseUser,
             permissions: { ...userData.permissions, location: false },
           };
           setUser(updated);

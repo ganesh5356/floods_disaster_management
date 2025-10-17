@@ -15,6 +15,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { missions as initialMissions } from '../../../data/mockData';
 import FloodMap from '../../map/FloodMap';
 import CommunicationHub from '../team-leader/views/CommunicationHub';
+import { openGoogleMapsDirections } from '../../../utils/maps';
 
 interface FieldOfficerDashboardProps {
   floodZones: FloodZone[];
@@ -58,8 +59,13 @@ const FieldOfficerDashboard: React.FC<FieldOfficerDashboardProps> = (props) => {
                             sosRequests={props.sosRequests}
                             onUpdateStatus={handleUpdateMissionStatus}
                             onNavigate={(mission) => {
-                                setActiveMission(mission);
-                                setActiveTab('map');
+                                const sos = props.sosRequests.find(s => mission.sosRequestIds.includes(s.id));
+                                if (sos) {
+                                    openGoogleMapsDirections(sos.location, { travelMode: 'driving' });
+                                } else {
+                                    setActiveMission(mission);
+                                    setActiveTab('map');
+                                }
                             }}
                         />;
             case 'map':

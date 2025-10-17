@@ -98,6 +98,8 @@ const FloodMap: React.FC<FloodMapProps> = ({
   const [editingZone, setEditingZone] = useState<FloodZone | null>(null);
   const [newZoneCoords, setNewZoneCoords] = useState<[number, number] | null>(null);
   const { register, handleSubmit, reset, setValue } = useForm<Omit<FloodZone, 'id'>>();
+  const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
+  const internalMapRef = useRef<any>(null);
 
   const getRiskPathOptions = (level: string) => {
     let color = '';
@@ -169,6 +171,27 @@ const FloodMap: React.FC<FloodMapProps> = ({
     reset();
   };
 
+  const handleLocateMe = () => {
+    if (!navigator || !navigator.geolocation) {
+      alert('Geolocation is not supported in this browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setCurrentLocation(coords);
+        const mapInstance = internalMapRef.current || (mapRef && (mapRef as any).current);
+        if (mapInstance && typeof mapInstance.flyTo === 'function') {
+          mapInstance.flyTo(coords, 14);
+        }
+      },
+      (err) => {
+        console.error('Geolocation error', err);
+        alert('Unable to access your location. Please allow location permissions.');
+      }
+    );
+  };
+
   return (
     <div className="relative h-full w-full rounded-lg overflow-hidden">
         {onExit && (
@@ -176,7 +199,7 @@ const FloodMap: React.FC<FloodMapProps> = ({
                 <ArrowLeft className="w-6 h-6" />
             </button>
         )}
-      <MapContainer center={indiaCenter} zoom={5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }} whenCreated={mapInstance => { if (mapRef) mapRef.current = mapInstance; }}>
+      <MapContainer center={indiaCenter} zoom={5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }} whenCreated={mapInstance => { if (mapRef) mapRef.current = mapInstance; internalMapRef.current = mapInstance; }}>
         <MapResizer />
         <MapEventsHandler onClick={handleMapClick} />
         <LayersControl position="topright">
@@ -240,6 +263,12 @@ const FloodMap: React.FC<FloodMapProps> = ({
            </Marker>
         ))}
 
+        {currentLocation && (
+          <Marker position={currentLocation}>
+            <Popup>You are here</Popup>
+          </Marker>
+        )}
+
         {fieldOfficers.map(officer => officer.location && (
             <Marker key={officer.id} position={officer.location} icon={officerIcon(officer.status)}>
                 <Popup>
@@ -275,11 +304,12 @@ const FloodMap: React.FC<FloodMapProps> = ({
         </div>
       </div>
 
-      {canEdit && (
-        <div className="absolute bottom-4 right-4 z-[1000]">
-            <p className="text-xs bg-black/50 text-white p-2 rounded-md mb-2">Click on map to add a new zone</p>
-        </div>
-      )}
+      <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end space-y-2">
+        <button onClick={handleLocateMe} className="bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700">Current Location</button>
+        {canEdit && (
+          <p className="text-xs bg-black/50 text-white p-2 rounded-md">Click on map to add a new zone</p>
+        )}
+      </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title={editingZone ? 'Edit Danger Zone' : 'Create New Danger Zone'}>
         <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
