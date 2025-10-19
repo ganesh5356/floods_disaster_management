@@ -436,7 +436,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ floodZones, sosRequests, 
         { id: 'map', label: t('map'), icon: Map },
         { id: 'alerts', label: t('alerts'), icon: Bell },
         { id: 'news', label: t('news'), icon: Newspaper },
-        { id: 'weather', label: 'Weather', icon: CloudRain },
+        { id: 'weather', label: t('weather'), icon: CloudRain },
         { id: 'settings', label: t('profile'), icon: Settings },
     ];
     
@@ -445,7 +445,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ floodZones, sosRequests, 
         map: t('live_map'),
         alerts: t('alerts_notifications'),
         news: t('latest_news'),
-        weather: 'Weather Report',
+        weather: t('real_time_weather'),
         settings: t('profile_title'),
     };
 
@@ -497,7 +497,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ floodZones, sosRequests, 
             case 'news': return <NewsView newsReports={newsReports} />;
             case 'weather': return (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl shadow-lg p-6">
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">Real-time Weather</h2>
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">{t('real_time_weather')}</h2>
                     <WeatherWidget />
                 </motion.div>
             );
@@ -642,6 +642,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ floodZones, sosRequests, 
                     </div>
                 </div>
             </Modal>
+
         </div>
     );
 };
