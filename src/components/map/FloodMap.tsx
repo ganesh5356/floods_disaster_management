@@ -77,6 +77,48 @@ const MapResizer: React.FC = () => {
     return null;
 };
 
+// Add back-control as a Leaflet Control so it sits correctly among map controls
+const MapBackControl: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const map = useMap();
+  useEffect(() => {
+    const ctrl = L.control({ position: 'topright' });
+    ctrl.onAdd = () => {
+      const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar');
+      // styling to match previous button look
+      container.style.margin = '6px';
+      container.style.padding = '0';
+      const btn = L.DomUtil.create('a', '', container) as HTMLAnchorElement;
+      btn.href = '#';
+      btn.setAttribute('role', 'button');
+      btn.setAttribute('aria-label', 'Go back');
+      btn.style.display = 'flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'center';
+      btn.style.width = '40px';
+      btn.style.height = '40px';
+      btn.style.background = 'white';
+      btn.style.borderRadius = '9999px';
+      btn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
+      btn.style.color = '#374151';
+      btn.style.textDecoration = 'none';
+      btn.style.cursor = 'pointer';
+      // simple left arrow SVG (keeps look consistent without importing component)
+      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+
+      L.DomEvent.on(btn, 'click', (e: Event) => {
+        L.DomEvent.stopPropagation(e);
+        L.DomEvent.preventDefault(e);
+        onBack();
+      });
+      L.DomEvent.disableClickPropagation(container);
+      return container;
+    };
+    ctrl.addTo(map);
+    return () => { ctrl.remove(); };
+  }, [map, onBack]);
+  return null;
+};
+
 const FloodMap: React.FC<FloodMapProps> = ({ 
   showSOS = false, 
   zones, 
@@ -255,29 +297,21 @@ const FloodMap: React.FC<FloodMapProps> = ({
 
   return (
     <div className="relative w-full rounded-lg overflow-hidden">
-        {onExit && (
-            <button
-              onClick={handleBack}
-              aria-label="Go back"
-              className="absolute top-4 right-4 z-[2000] bg-white p-3 rounded-full shadow-lg text-gray-700 hover:bg-gray-100 transition-colors pointer-events-auto"
-              style={{ touchAction: 'manipulation' }}
-            >
-                <ArrowLeft className="w-6 h-6" />
-            </button>
-        )}
-      <MapContainer
-        center={indiaCenter}
-        zoom={5}
-        scrollWheelZoom={true}
-        style={{ width: '100%', height: '100%', minHeight: '60vh' }} // responsive minHeight
-        whenCreated={mapInstance => {
-          if (mapRef && 'current' in mapRef) (mapRef as React.RefObject<L.Map | null>).current = mapInstance;
-          internalMapRef.current = mapInstance;
-        }}
-      >
-        <MapResizer />
-        <MapEventsHandler onClick={handleMapClick} />
-        <LayersControl position="topright">
+        {/* back control added inside the MapContainer so it stacks correctly with Leaflet controls */}
+         <MapContainer
+           center={indiaCenter}
+           zoom={5}
+           scrollWheelZoom={true}
+           style={{ width: '100%', height: '100%', minHeight: '60vh' }} // responsive minHeight
+           whenCreated={mapInstance => {
+             if (mapRef && 'current' in mapRef) (mapRef as React.RefObject<L.Map | null>).current = mapInstance;
+             internalMapRef.current = mapInstance;
+           }}
+         >
+          {onExit && <MapBackControl onBack={handleBack} />}
+           <MapResizer />
+           <MapEventsHandler onClick={handleMapClick} />
+           <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="OpenStreetMap">
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
