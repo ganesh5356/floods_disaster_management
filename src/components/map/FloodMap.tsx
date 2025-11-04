@@ -5,6 +5,7 @@ import { FloodZone, SOSRequest, User, Asset } from '../../types';
 import Modal from '../common/Modal';
 import { useForm } from 'react-hook-form';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css'; // ensure map styles & marker icons load correctly
 
 // Custom Icons
 const userLocationIcon = new L.Icon({
@@ -49,7 +50,7 @@ interface FloodMapProps {
   onUpdateZone?: (zone: FloodZone) => void;
   onDeleteZone?: (zoneId: string) => void;
   jurisdiction?: 'state' | 'district' | 'local';
-  mapRef?: React.RefObject<any>; // For external control
+  mapRef?: React.RefObject<L.Map | null>; // typed Leaflet map ref for external control
   onExit?: () => void;
   fieldOfficers?: User[];
   assets?: Asset[];
@@ -99,7 +100,53 @@ const FloodMap: React.FC<FloodMapProps> = ({
   const [newZoneCoords, setNewZoneCoords] = useState<[number, number] | null>(null);
   const { register, handleSubmit, reset, setValue } = useForm<Omit<FloodZone, 'id'>>();
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
-  const internalMapRef = useRef<any>(null);
+  const internalMapRef = useRef<L.Map | null>(null);
+
+  // Push a history state so browser back (hardware/software) will close the map.
+  useEffect(() => {
+    if (!onExit) return;
+    // Only push if not already our floodmap state
+    const currentState = window.history.state as any;
+    if (!(currentState && currentState.floodmap)) {
+      try {
+        window.history.pushState({ floodmap: true }, '');
+      } catch (e) {
+        // ignore - some environments restrict pushState
+      }
+    }
+
+    const handlePop = (e: PopStateEvent) => {
+      const state = (e.state as any) || null;
+      // When we pop back to a state that is NOT our floodmap state, trigger exit
+      if (!(state && state.floodmap)) {
+        onExit && onExit();
+      }
+    };
+
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+    };
+  }, [onExit]);
+
+  // Responsive UI: collapsed legend on small screens
+  const [legendOpen, setLegendOpen] = useState(false);
+
+  // Ensure map invalidates when viewport changes (resize / orientation)
+  useEffect(() => {
+    const handler = () => {
+      const mapInstance = internalMapRef.current || (mapRef && 'current' in mapRef ? mapRef.current : null);
+      if (mapInstance && typeof (mapInstance as any).invalidateSize === 'function') {
+        (mapInstance as L.Map).invalidateSize();
+      }
+    };
+    window.addEventListener('resize', handler);
+    window.addEventListener('orientationchange', handler);
+    return () => {
+      window.removeEventListener('resize', handler);
+      window.removeEventListener('orientationchange', handler);
+    };
+  }, [mapRef]);
 
   const getRiskPathOptions = (level: string) => {
     let color = '';
@@ -180,9 +227,9 @@ const FloodMap: React.FC<FloodMapProps> = ({
       (pos) => {
         const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setCurrentLocation(coords);
-        const mapInstance = internalMapRef.current || (mapRef && (mapRef as any).current);
-        if (mapInstance && typeof mapInstance.flyTo === 'function') {
-          mapInstance.flyTo(coords, 14);
+        const mapInstance = internalMapRef.current || (mapRef && 'current' in mapRef ? mapRef.current : null);
+        if (mapInstance && typeof (mapInstance as any).flyTo === 'function') {
+          (mapInstance as L.Map).flyTo(coords, 14);
         }
       },
       (err) => {
@@ -192,14 +239,42 @@ const FloodMap: React.FC<FloodMapProps> = ({
     );
   };
 
+  const handleBack = () => {
+    // Prefer using history.back() so popstate listener runs and parent handles exit
+    const state = window.history.state as any;
+    if (state && state.floodmap) {
+      try {
+        window.history.back();
+        return;
+      } catch (e) {
+        // fallback to direct call
+      }
+    }
+    onExit && onExit();
+  };
+
   return (
-    <div className="relative h-full w-full rounded-lg overflow-hidden">
+    <div className="relative w-full rounded-lg overflow-hidden">
         {onExit && (
-            <button onClick={onExit} className="absolute top-4 right-4 z-[1000] bg-white p-3 rounded-full shadow-lg text-gray-700 hover:bg-gray-100 transition-colors">
+            <button
+              onClick={handleBack}
+              aria-label="Go back"
+              className="absolute top-4 right-4 z-[2000] bg-white p-3 rounded-full shadow-lg text-gray-700 hover:bg-gray-100 transition-colors pointer-events-auto"
+              style={{ touchAction: 'manipulation' }}
+            >
                 <ArrowLeft className="w-6 h-6" />
             </button>
         )}
-      <MapContainer center={indiaCenter} zoom={5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }} whenCreated={mapInstance => { if (mapRef) mapRef.current = mapInstance; internalMapRef.current = mapInstance; }}>
+      <MapContainer
+        center={indiaCenter}
+        zoom={5}
+        scrollWheelZoom={true}
+        style={{ width: '100%', height: '100%', minHeight: '60vh' }} // responsive minHeight
+        whenCreated={mapInstance => {
+          if (mapRef && 'current' in mapRef) (mapRef as React.RefObject<L.Map | null>).current = mapInstance;
+          internalMapRef.current = mapInstance;
+        }}
+      >
         <MapResizer />
         <MapEventsHandler onClick={handleMapClick} />
         <LayersControl position="topright">
@@ -254,7 +329,7 @@ const FloodMap: React.FC<FloodMapProps> = ({
            <Marker key={sos.id} position={sos.location} icon={userLocationIcon}>
             <Popup>
               <div className="font-sans">
-                <div className={`flex items-center mb-2 p-2 rounded-t-lg -m-3 mb-2 ${getSeverityPathOptions(sos.severity).fillColor === '#dc2626' ? 'bg-red-600' : getSeverityPathOptions(sos.severity).fillColor === '#EF4444' ? 'bg-red-500' : 'bg-orange-500' } text-white`}><AlertTriangle className="w-5 h-5 mr-2" /><h4 className="font-bold text-base">SOS Request</h4></div>
+                <div className={`flex items-center p-2 rounded-t-lg -m-3 ${getSeverityPathOptions(sos.severity).fillColor === '#dc2626' ? 'bg-red-600' : getSeverityPathOptions(sos.severity).fillColor === '#EF4444' ? 'bg-red-500' : 'bg-orange-500' } text-white`}><AlertTriangle className="w-5 h-5 mr-2" /><h4 className="font-bold text-base">SOS Request</h4></div>
                 <p className="text-sm text-gray-600">From: <span className="font-semibold">{sos.userName}</span></p>
                 <p className="text-sm text-gray-600">Status: <span className="font-semibold">{sos.status}</span></p>
                 <p className="text-sm text-gray-600 mt-1">{sos.description}</p>
@@ -294,18 +369,36 @@ const FloodMap: React.FC<FloodMapProps> = ({
         ))}
       </MapContainer>
       
-      <div className="absolute top-4 left-4 bg-white bg-opacity-80 p-3 rounded-lg shadow-lg z-[1000]">
-        <h3 className="font-semibold text-gray-800 mb-2">Legend</h3>
-        <div className="space-y-1 text-sm">
-          <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" className="w-2 h-auto mr-2"/><span>SOS Request</span></div>
-          <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png" className="w-2 h-auto mr-2"/><span>Available Officer</span></div>
-          <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" className="w-2 h-auto mr-2"/><span>Officer on Mission</span></div>
-          <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png" className="w-2 h-auto mr-2"/><span>Boat</span></div>
+      {/* Responsive legend: visible on md+, collapsible on small screens */}
+      <div className="absolute top-4 left-4 z-[1000]">
+        <div className="hidden md:block bg-white bg-opacity-90 p-3 rounded-lg shadow-lg">
+          <h3 className="font-semibold text-gray-800 mb-2">Legend</h3>
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" className="w-3 h-auto mr-2"/><span>SOS Request</span></div>
+            <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png" className="w-3 h-auto mr-2"/><span>Available Officer</span></div>
+            <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" className="w-3 h-auto mr-2"/><span>Officer on Mission</span></div>
+            <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png" className="w-3 h-auto mr-2"/><span>Boat</span></div>
+          </div>
+        </div>
+        <div className="md:hidden">
+          <button aria-expanded={legendOpen} aria-controls="legend-sm" onClick={() => setLegendOpen(s => !s)} className="bg-white bg-opacity-90 p-2 rounded-md shadow">
+            <span className="text-xs font-medium">{legendOpen ? 'Hide Legend' : 'Show Legend'}</span>
+          </button>
+          {legendOpen && (
+            <div id="legend-sm" className="mt-2 bg-white bg-opacity-95 p-3 rounded-lg shadow text-sm w-44">
+              <div className="space-y-1">
+                <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" className="w-3 h-auto mr-2"/><span>SOS Request</span></div>
+                <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png" className="w-3 h-auto mr-2"/><span>Available Officer</span></div>
+                <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" className="w-3 h-auto mr-2"/><span>Officer on Mission</span></div>
+                <div className="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png" className="w-3 h-auto mr-2"/><span>Boat</span></div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end space-y-2">
-        <button onClick={handleLocateMe} className="bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-700">Current Location</button>
+        <button onClick={handleLocateMe} aria-label="Locate me" className="bg-blue-600 text-white px-3 py-2 rounded-full shadow-lg hover:bg-blue-700 text-sm md:text-base">Current Location</button>
         {canEdit && (
           <p className="text-xs bg-black/50 text-white p-2 rounded-md">Click on map to add a new zone</p>
         )}
