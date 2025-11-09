@@ -7,6 +7,14 @@ import { useForm } from 'react-hook-form';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css'; // ensure map styles & marker icons load correctly
 
+// Fix: ensure Leaflet default marker images load (use CDN URLs so bundlers don't break paths)
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
 // Custom Icons
 const userLocationIcon = new L.Icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
@@ -321,7 +329,7 @@ const FloodMap: React.FC<FloodMapProps> = ({
           {showWeatherOverlays && (
             <>
               <LayersControl.Overlay name="Precipitation">
-                <TileLayer url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`} opacity={0.6} />
+              <TileLayer url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`} opacity={0.6} />
               </LayersControl.Overlay>
               <LayersControl.Overlay name="Clouds">
                 <TileLayer url={`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`} opacity={0.6} />
